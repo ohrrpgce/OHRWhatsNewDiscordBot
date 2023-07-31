@@ -277,6 +277,7 @@ class UpdateChecker:
 
             # Update state once the update is posted successfully
             self.log_shas[logname] = new_sha
+            os.remove(logname)
             os.rename(logname + '.new', logname)
             self.save_state()
 
