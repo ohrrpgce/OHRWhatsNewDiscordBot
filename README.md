@@ -1,6 +1,6 @@
 # OHRWhatsNewDiscordBot
 
-A Discord bot that watches for and reports new git commits, changelog updates (whatsnew.txt and IMPORTANT-nightly.txt) and nightly builds for the OHRRPGCE.
+A Discord bot that watches for and reports new git commits, changelog updates (whatsnew.txt and IMPORTANT-nightly.txt), nightly builds for the OHRRPGCE, and also new and updated OHRRPGCE games on itch.io and Slime Salad. It also posts embeds when someone links to a game on Slime Salad.
 
 This bot can only be added to one guild (server) at a time.
 

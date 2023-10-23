@@ -18,6 +18,7 @@ from github import trim_str
 sys.path.append(os.path.join(os.getcwd(), "ohark"))
 
 import ohrk.pull_slimesalad as slimesalad
+import ohrk.pull_itchio as itchio
 import ohrk.util
 import ohrk.gamedb as gamedb
 
@@ -52,6 +53,9 @@ UPDATES_CHANNEL = CONFIG["UPDATES_CHANNEL"]
 MINUTES_PER_CHECK = CONFIG["MINUTES_PER_CHECK"]
 # If it's been this long without new nightlies then force a check for git commits and log changes
 MAX_CHECK_DELAY_HOURS = CONFIG["MAX_CHECK_DELAY_HOURS"]
+# How often to check for new/updated itch.io games
+ITCHIO_CHECK_HOURS = CONFIG["ITCHIO_CHECK_HOURS"]
+# How often to check for new/updated SS games
 SS_CHECK_HOURS = CONFIG["SS_CHECK_HOURS"]
 # How long (seconds) to cache pages fetched from slimesalad.com
 SS_CACHE_SEC = CONFIG["SS_CACHE_SEC"]
@@ -394,6 +398,41 @@ class UpdateChecker:
         shutil.copyfile(new_path, old_path)  # Leave copy in the cache
         return ret
 
+    @tasks.loop(hours = ITCHIO_CHECK_HOURS)
+    def check_itchio_gamelist(self, ctx = None) -> bool:
+        "Fetch SS gamedump and announce new & changed games. Returns true if posted anything."
+        if verbose:
+            print(f"** UpdateChecker.check_itchio_gamelist() ", time.asctime())
+        ret = False
+
+        olddb = ohrk.gamedb.GameList.load('itch.io')
+        if olddb:
+            # Not first run
+
+            # The first page. It's not clear what itch.io actually sorts them by, but we expect
+            # any updated games will be on the first page.
+            collection_games = itchio.get_new_games(itchio.OHRRPGCE_COLLECTION_URL, cache = False)
+            tag_games = itchio.get_new_games(itchio.OHRRPGCE_TAG_URL, cache = False)
+            collection_games.update(tag_games)
+
+            for srcid, game in collection_games.items():
+                if srcid not in olddb.games:
+                    desc = f"[itch.io] New release **{game.name}** by {game.author}\n{game.url}"
+                    await self.message(desc)
+                    ret = True
+                else:
+                    oldgame = olddb.games[srcid]
+                    if game.mtime != oldgame.mtime:
+                        desc = f"[itch.io] Update to **{game.name}** by {game.author}\n{game.url}"
+                        if verbose:
+                            print(game.url, "old mtime", time.ctime(oldgame.mtime), "new mtime", time.ctime(game.mtime))
+                        await self.message(desc)
+                        ret = True
+
+        db = itchio.get_all_games()  # Uses caches of pages we just loaded
+        db.save()
+        return ret
+
 
 def ss_game_embed(url, cache = SS_CACHE_SEC, show_update_date = False, show_dl_dates = False):
     """Create an Embed for a Slime Salad game page
@@ -492,6 +531,7 @@ async def on_ready():
         update_checker = UpdateChecker(bot)
         update_checker.check_ohrdev.start()
         update_checker.check_ss_gamelist.start()
+        update_checker.check_itchio_gamelist.start()
     # Be cute
     await bot.change_presence(activity = discord.Activity(type = discord.ActivityType.watching, name = "OHRRPGCE changes"))
 
@@ -520,6 +560,7 @@ async def message_listener(message):
     "Called for each message, watches for links to SS games, and posts an embed."
     if message.author == bot.user:
         return
+    #print("mentioned", bot.user.mentioned_in(message))
     if auto_ss_embeds_enabled or bot.user.mentioned_in(message):
         if message.embeds:
             return
@@ -562,9 +603,10 @@ async def check(ctx, force: bool = True):
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkgames(ctx):
-    "Check for new and updated games on Slime Salad."
+    "Check for new and updated OHRRPGCE games on itch.io and Slime Salad"
     print("!checkgames")
-    if not await update_checker.check_ss_gamelist(ctx):
+    if not (await update_checker.check_ss_gamelist(ctx)
+            | await update_checker.check_itchio_gamelist(ctx)):
         await ctx.send("No changes.")
 
 @bot.command()
