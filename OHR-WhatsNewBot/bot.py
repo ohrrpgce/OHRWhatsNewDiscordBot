@@ -65,6 +65,8 @@ SS_CACHE_SEC = CONFIG["SS_CACHE_SEC"]
 COOLDOWN_SEC = CONFIG["COOLDOWN_SEC"]
 # Seconds of delay for !whatsnew command
 WHATSNEW_COOLDOWN_SEC = CONFIG["WHATSNEW_COOLDOWN_SEC"]
+# Seconds of delay for !checkgames command
+CHECKGAMES_COOLDOWN_SEC = CONFIG["CHECKGAMES_COOLDOWN_SEC"]
 # Max size of message content, in characters (documented as 2000)
 MSG_SIZE = CONFIG["MSG_SIZE"]
 # Max size of an embed description in characters. Documented as 4096, API error says 6000
@@ -603,8 +605,9 @@ async def message_listener(message):
 async def help(ctx):
     await ctx.send(f"""Available bot commands:
 ```
-  !check                {check.help}
+  !checkdev / !check    {checkdev.help}
   !checkgames           {checkgames.help}
+  !checkall             {checkall.help}
   !commit r####/sha     {commit.help}
   !info                 {info.help}
   !nightlies / !builds  {nightlies.help}
@@ -617,9 +620,21 @@ async def help(ctx):
 @commands.check(allowed_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
-async def check(ctx, force: bool = True):
+async def checkall(ctx, force: bool = True):
+    "Same as !checkdev plus !checkgames"
+    print("!checkall force=", force)
+    if not (await update_checker.check_ss_gamelist(ctx)
+            | await update_checker.check_itchio_gamelist(ctx)
+            | await update_checker.check_ohrdev(ctx, force)):
+        await ctx.send("No changes.")
+
+@bot.command()
+@commands.check(allowed_channel)
+@commands.max_concurrency(1)
+@commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
+async def checkdev(ctx, force: bool = True):
     "Check for new git/svn commits and changes to whatsnew.txt & IMPORTANT-nightly.txt."
-    print("!check force=", force)
+    print("!checkdev force=", force)
     if not await update_checker.check_ohrdev(ctx, force):
         await ctx.send("No changes.")
 
@@ -628,7 +643,7 @@ async def check(ctx, force: bool = True):
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkgames(ctx):
-    "Check for new and updated OHRRPGCE games on itch.io and Slime Salad"
+    "Check for new and updated OHRRPGCE games on itch.io and Slime Salad (be patient)"
     print("!checkgames")
     if not (await update_checker.check_ss_gamelist(ctx)
             | await update_checker.check_itchio_gamelist(ctx)):
@@ -715,7 +730,7 @@ async def rewind_gamelists(ctx, minutes: int):
 @commands.check(allowed_channel)
 @commands.cooldown(2, WHATSNEW_COOLDOWN_SEC, commands.BucketType.guild)
 async def whatsnew(ctx, release: str = None):
-    "Display whatsnew.txt for a specific release, or by default for current nightlies."
+    "Display whatsnew.txt section for a specific release, or by default for current nightlies."
     print("!whatsnew")
 
     # Just use the most recently downloaded whatsnew.txt
