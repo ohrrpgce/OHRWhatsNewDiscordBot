@@ -25,11 +25,11 @@ import ohrk.util
 import ohrk.gamedb as gamedb
 
 
-# Enable verbose logging to console
-verbose = False
+# Console logging verbosity level, 0, 1 or 2
+verbose = 2
 
-github.verbose = verbose
-slimesalad.verbose = verbose
+github.verbose = verbose >= 2
+slimesalad.verbose = verbose >= 2
 
 auto_ss_embeds_enabled = True  # Post embed when an SS game is linked to
 
@@ -227,7 +227,7 @@ class UpdateChecker:
             print("logs_changed =", logs_changed)
 
         self.save_state()  # Save .last_full_check
-        if verbose:
+        if verbose >= 2:
             self.print_state()
 
         return logs_changed
@@ -343,11 +343,12 @@ class UpdateChecker:
         if verbose and added:
             print("New SS games:")
         for gameinfo in added:
-            if verbose:
+            if verbose >= 2:
                 print(gameinfo.serialize())
+            else:
+                print(f"New release on Slime Salad: {gameinfo.name} by {gameinfo.author}")
             # Cache for a few seconds to avoid redownloading gamedump.php
             embed = ss_game_embed(gameinfo.url, cache = 10)
-            #print(f"New release on Slime Salad: {gameinfo.name} by {gameinfo.author}")
             await self.message(f"[Slime Salad] New release: **{gameinfo.name}** by {gameinfo.author}", ctx, embed = embed)
             ret = True
 
@@ -360,10 +361,12 @@ class UpdateChecker:
         if verbose and changed:
             print("Changed SS games:")
         for old, new in changed:
-            if verbose:
+            if verbose >= 2:
                 print(old.serialize())
                 print(' -> ')
                 print(new.serialize())
+            else:
+                print(f"[Slime Salad] Update to {new.name} {new.url}")
 
             desc = ""
             if old.name != new.name:
@@ -427,7 +430,7 @@ class UpdateChecker:
                     if game.mtime != oldgame.mtime:
                         desc = f"[itch.io] Update to **{game.name}** by {game.author}\n{game.url}"
                         if verbose:
-                            print(game.url, "old mtime", time.ctime(oldgame.mtime), "new mtime", time.ctime(game.mtime))
+                            print(f"[itch.io] Update to {game.name}", game.url, "old mtime", time.ctime(oldgame.mtime), "new mtime", time.ctime(game.mtime))
                         await self.message(desc)
                         ret = True
 
