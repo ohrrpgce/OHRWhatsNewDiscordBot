@@ -111,8 +111,10 @@ class UpdateChecker:
             self.last_commit = github.GitCommit(None, _load_from_dict = state['last_commit'])
             self.log_shas = state['log_shas']
             # The log files will already be downloaded
+            self.first_itchio_run = False
         else:
             print("No/invalid state.json, initialising state")
+            self.first_itchio_run = True
             self.last_full_check = time.time()
             self.last_commit = self.repo.last_commits(self.branch, 1)[0]
             self.log_shas = {}
@@ -411,11 +413,12 @@ class UpdateChecker:
         ret = False
 
         olddb = ohrk.gamedb.GameList.load('itch.io')
-        if olddb:
+        # olddb may be None if the first run and the ohrk itch.io DB never saved
+        if olddb and not self.first_itchio_run:
             # Not first run
 
             # The first page. It's not clear what itch.io actually sorts them by, but we expect
-            # any updated games will be on the first page.
+            # any updated games will be on the first page, afterall '/games/newest/' is in the URL
             collection_games = itchio.get_new_games(itchio.OHRRPGCE_COLLECTION_URL, cache = False)
             tag_games = itchio.get_new_games(itchio.OHRRPGCE_TAG_URL, cache = False)
             collection_games.update(tag_games)
@@ -436,6 +439,7 @@ class UpdateChecker:
 
         db = itchio.get_all_games()  # Uses caches of pages we just loaded
         db.save()
+        self.first_itchio_run = False
         return ret
 
 
@@ -539,6 +543,7 @@ async def on_ready():
         update_checker.check_itchio_gamelist.start()
     # Be cute
     await bot.change_presence(activity = discord.Activity(type = discord.ActivityType.watching, name = "OHRRPGCE changes"))
+    print("Finished startup checks")
 
 def chunk_message(message, chunk_size = MSG_SIZE, formatting = "{}"):
     "Split a string at line breaks into chunks at most chunk_size in length."
@@ -600,7 +605,7 @@ async def help(ctx):
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def check(ctx, force: bool = True):
     "Check for new git/svn commits and changes to whatsnew.txt & IMPORTANT-nightly.txt."
-    print("!check", force)
+    print("!check force=", force)
     if not await update_checker.check_ohrdev(ctx, force):
         await ctx.send("No changes.")
 
@@ -733,5 +738,5 @@ async def on_command_error(ctx, error):
     print("----")
 
 
-if '__name__' == '__main__':
+if __name__ == '__main__':
     bot.run(APP_TOKEN)

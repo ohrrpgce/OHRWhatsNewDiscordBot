@@ -44,9 +44,9 @@ def pairwise(iterable):
         yield prev, item
         prev = item
 
-def compare_release_notes(old_file: str, new_file: str, newest_only = False, diff = True) -> str:
+def compare_release_notes(old_filepath: str, new_filepath: str, newest_only = False, diff = True) -> str:
     '''
-    Takes old_file and new_file, paths to two versions of whatsnew.txt
+    Takes old_filepath and new_filepath, paths to two versions of whatsnew.txt
     (can also be used with IMPORTANT-nightly.txt).
     Returns a diff of added/removed lines, plus section headers above a changed line.
     Also unwraps lines, removes blanks, and readds blanks before sections.
@@ -55,11 +55,11 @@ def compare_release_notes(old_file: str, new_file: str, newest_only = False, dif
     diff: Display +/-/? lines not just added lines
     '''
     # Read the contents of the old release notes
-    with open(old_notes, 'r') as old_file:
+    with open(old_filepath, 'r') as old_file:
         old_items = parse_items(old_file.readlines())
 
     # Read the contents of the new release notes
-    with open(new_notes, 'r') as new_file:
+    with open(new_filepath, 'r') as new_file:
         new_items = parse_items(new_file.readlines())
 
     # A pattern to match release headers: no indentation and a [release name]
