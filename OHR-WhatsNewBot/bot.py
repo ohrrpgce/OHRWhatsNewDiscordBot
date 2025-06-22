@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from datetime import datetime, timezone
 import json
 import os
@@ -59,7 +61,7 @@ ITCHIO_CHECK_HOURS = CONFIG["ITCHIO_CHECK_HOURS"]
 SS_CHECK_HOURS = CONFIG["SS_CHECK_HOURS"]
 # How long (seconds) to cache pages fetched from slimesalad.com
 SS_CACHE_SEC = CONFIG["SS_CACHE_SEC"]
-# Seconds of delay for commands subject to cooldown
+# Seconds of delay for commands subject to cooldown (aside from !whatsnew)
 COOLDOWN_SEC = CONFIG["COOLDOWN_SEC"]
 # Seconds of delay for !whatsnew command
 WHATSNEW_COOLDOWN_SEC = CONFIG["WHATSNEW_COOLDOWN_SEC"]
@@ -482,7 +484,7 @@ def ss_game_embed(url, cache = SS_CACHE_SEC, show_update_date = False, show_dl_d
                 if show_dl_dates:
                     description = epoch_date_str(mtime) + " " + description
                 elif description == "":
-                    description = download.sizestr
+                    description = download.sizestr + f" (" + epoch_date_str(mtime) + ")"
         downloads_by_date.append( (mtime, download.name(), description) )
     # Show only latest downloads
     downloads_by_date.sort(reverse = True)
@@ -551,6 +553,7 @@ def chunk_message(message, chunk_size = MSG_SIZE, formatting = "{}"):
 async def allowed_channel(ctx):
     if ctx.channel.id not in ALLOWED_CHANNELS:
         #await ctx.send("This command is not allowed in this channel.")
+        print("Disallowed channel for command")
         return False
     return True
 
@@ -630,7 +633,7 @@ async def commit(ctx, rev: str):
         await ctx.send(str(err))
     else:
         msg = trim_str(commit.format(), MSG_SIZE)
-        await ctx.send(msg)
+        await ctx.send(msg, suppress_embeds = True)
 
 # Allowed in all channels
 @bot.command()
@@ -726,4 +729,6 @@ async def on_command_error(ctx, error):
     traceback.print_exception(type(error), error, error.__traceback__)
     print("----")
 
-bot.run(APP_TOKEN)
+
+if '__name__' == '__main__':
+    bot.run(APP_TOKEN)
