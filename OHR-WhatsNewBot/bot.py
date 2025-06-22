@@ -112,6 +112,7 @@ class UpdateChecker:
             self.log_shas = state['log_shas']
             # The log files will already be downloaded
             self.first_itchio_run = False
+            self.rewound_gamelist_mtimes = state['rewound_gamelist_mtimes']
         else:
             print("No/invalid state.json, initialising state")
             self.first_itchio_run = True
@@ -121,6 +122,7 @@ class UpdateChecker:
             for logname in self.watched_logs:
                 self.log_shas[logname] = self.repo.last_sha_touching(self.branch, logname)
                 self.download_revision(self.log_shas[logname], logname)
+            self.rewound_gamelist_mtimes = {'ss': 1e99, 'itchio': 1e99}
             # Don't need to download gamedump.php, self.check_ss_gamelist() will.
             self.save_state()
 
@@ -135,6 +137,7 @@ class UpdateChecker:
                 'last_commit': vars(self.last_commit),
                 'log_shas': self.log_shas,
                 'last_full_check': self.last_full_check,
+                'rewound_gamelist_mtimes': self.rewound_gamelist_mtimes,
             }, indent = '\t'))
 
     def state_info(self):
@@ -192,6 +195,13 @@ class UpdateChecker:
         for logname in self.watched_logs:
             self.log_shas[logname] = self.last_commit.sha
             self.download_revision(self.last_commit.sha, logname)
+        self.save_state()
+
+    def rewind_gamelist_mtimes(self, until):
+        """Rewind gamelist state to epoch time 'until', causing new game and update messages on next
+        check as if the last check happened at 'until'. For debugging."""
+        self.rewound_gamelist_mtimes['itchio'] = until
+        self.rewound_gamelist_mtimes['ss'] = until  # Ignored!
         self.save_state()
 
     @tasks.loop(minutes = MINUTES_PER_CHECK)
@@ -327,7 +337,8 @@ class UpdateChecker:
 
     @tasks.loop(hours = SS_CHECK_HOURS)
     async def check_ss_gamelist(self, ctx = None) -> bool:
-        "Fetch SS gamedump and announce new & changed games. Returns true if posted anything."
+        """Fetch SS gamedump and announce new & changed games. Returns true if posted anything.
+        Does not support !rewind_gamelists."""
         if verbose:
             print(f"** UpdateChecker.check_ss_gamelist() ", time.asctime())
         ret = False
@@ -430,7 +441,7 @@ class UpdateChecker:
                     ret = True
                 else:
                     oldgame = olddb.games[srcid]
-                    if game.mtime != oldgame.mtime:
+                    if game.mtime != oldgame.mtime or game.mtime > self.rewound_gamelist_mtimes['itchio']:
                         desc = f"[itch.io] Update to **{game.name}** by {game.author}\n{game.url}"
                         if verbose:
                             print(f"[itch.io] Update to {game.name}", game.url, "old mtime", time.ctime(oldgame.mtime), "new mtime", time.ctime(game.mtime))
@@ -440,6 +451,9 @@ class UpdateChecker:
         db = itchio.get_all_games()  # Uses caches of pages we just loaded
         db.save()
         self.first_itchio_run = False
+        # This is just for !rewind_gamelists, don't use it to determine which updates we've posted, that's a race condition
+        self.rewound_gamelist_mtimes['itchio'] = 1e99  #time.time() - 1.0
+        self.save_state()
         return ret
 
 
@@ -687,7 +701,15 @@ async def rewind_commits(ctx, num: int):
     "(For testing.) Set the bot state to n commits before HEAD."
     print("!rewind_commits", num)
     update_checker.rewind_commits(num)
-    await ctx.send("Rewound.")
+    await ctx.send(f"Rewound {num} git commits.")
+
+@bot.command(hidden = True)
+@commands.check(allowed_channel)
+async def rewind_gamelists(ctx, minutes: int):
+    "(For testing.) Set the gamelist state to n minutes before present."
+    print("!rewind_gamelists", minutes)
+    update_checker.rewind_gamelist_mtimes(time.time() - minutes * 60)
+    await ctx.send(f"Rewound {minutes} minutes of updates to SS/itch.io gamelists.")
 
 @bot.command()
 @commands.check(allowed_channel)
