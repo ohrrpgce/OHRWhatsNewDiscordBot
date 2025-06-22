@@ -399,7 +399,7 @@ class UpdateChecker:
         return ret
 
     @tasks.loop(hours = ITCHIO_CHECK_HOURS)
-    def check_itchio_gamelist(self, ctx = None) -> bool:
+    async def check_itchio_gamelist(self, ctx = None) -> bool:
         "Fetch SS gamedump and announce new & changed games. Returns true if posted anything."
         if verbose:
             print(f"** UpdateChecker.check_itchio_gamelist() ", time.asctime())
