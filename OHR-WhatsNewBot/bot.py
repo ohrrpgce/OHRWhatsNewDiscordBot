@@ -47,9 +47,9 @@ NIGHTLY_CHECK_URL = CONFIG["NIGHTLY_CHECK_URL"]
 GITHUB_REPO = CONFIG["GITHUB_REPO"]
 # git branch to watch
 GITHUB_BRANCH = CONFIG["GITHUB_BRANCH"]
-# IDs for channels where commands to check for updates can be used (some commands can be used anywhere)
-ALLOWED_CHANNELS = CONFIG["ALLOWED_CHANNELS"]
-# The channel in which changelog/game updates are automatically posted
+# Names (or integer IDs) of guild roles which allow using admin commands
+ADMIN_ROLES = CONFIG["ADMIN_ROLES"]
+# The channel in which changelog/game updates are automatically posted and in which !check* can be used
 UPDATES_CHANNEL = CONFIG["UPDATES_CHANNEL"]
 # How frequently we check for new nightlies. New nightlies triggers a check for git commits and log changes
 MINUTES_PER_CHECK = CONFIG["MINUTES_PER_CHECK"]
@@ -550,7 +550,7 @@ async def on_ready():
     print ("Started OHR WhatsNew Bot")
     print("------")
     if not bot.get_channel(UPDATES_CHANNEL):
-        print("ERROR: invalid UPDATES_CHANNEL")
+        print("ERROR: invalid UPDATES_CHANNEL (not added to that guild)")
     else:
         global update_checker
         update_checker = UpdateChecker(bot)
@@ -574,12 +574,15 @@ def chunk_message(message, chunk_size = MSG_SIZE, formatting = "{}"):
         yield formatting.format(message[:break_index])
         message = message[break_index:]
 
-async def allowed_channel(ctx):
-    if ctx.channel.id not in ALLOWED_CHANNELS:
-        #await ctx.send("This command is not allowed in this channel.")
-        print("Disallowed channel for command")
+async def updates_channel(ctx):
+    if ctx.channel.id != UPDATES_CHANNEL:
+        await ctx.send("This command is only allowed in #ohr-whatsnew.")
         return False
     return True
+
+def check_admin_role():
+    # Throws commands.MissingAnyRole
+    return commands.has_any_role(*ADMIN_ROLES)
 
 @bot.listen('on_message')
 #@commands.cooldown(1, 10, commands.BucketType.user)
@@ -601,7 +604,6 @@ async def message_listener(message):
 
 
 @bot.command()
-@commands.check(allowed_channel)
 async def help(ctx):
     await ctx.send(f"""You can force an early check for new and updated games and nightly builds with the !check commands in #ohr-whatsnew. Other commands can be used anywhere.
 ```
@@ -618,8 +620,20 @@ async def help(ctx):
 itch.io games are included if they're tagged 'ohrrpgce' or in the OHRRPGCE Games collection.
 """)
 
+@bot.command(hidden = True)
+@check_admin_role()
+async def admin_help(ctx):
+    await ctx.send(f"""```
+admin/mod/ohr dev only:
+  !rewind_commits       {rewind_commits.help}
+  !rewind_gamelists     {rewind_gamelists.help}
+Allowed by all:
+  !disable_embeds       {disable_embeds.help}
+  !enable_embeds        {enable_embeds.help}
+```""")
+
 @bot.command()
-@commands.check(allowed_channel)
+@commands.check(updates_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkall(ctx, force: bool = True):
@@ -631,7 +645,7 @@ async def checkall(ctx, force: bool = True):
         await ctx.send("No changes.")
 
 @bot.command(aliases = ['check'])
-@commands.check(allowed_channel)
+@commands.check(updates_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkdev(ctx, force: bool = True):
@@ -641,7 +655,7 @@ async def checkdev(ctx, force: bool = True):
         await ctx.send("No changes.")
 
 @bot.command()
-@commands.check(allowed_channel)
+@commands.check(updates_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkgames(ctx):
@@ -673,8 +687,8 @@ async def commit(ctx, rev: str):
         msg = trim_str(commit.format(), MSG_SIZE)
         await ctx.send(msg, suppress_embeds = True)
 
-# Allowed in all channels
 @bot.command()
+@commands.guild_only()
 async def disable_embeds(ctx):
     "Stop the bot from showing embeds for links to SS games, unless it's also @mentioned."
     print("!disable_embeds")
@@ -683,8 +697,8 @@ async def disable_embeds(ctx):
     await ctx.send(f"Auto game embeds disabled. Add @{bot.user} to a message to force posting embeds")
 
 
-# Allowed in all channels
 @bot.command()
+@commands.guild_only()
 async def enable_embeds(ctx):
     "Automatically show an embed whenever an SS game link is posted."
     print("!disable_embeds")
@@ -710,7 +724,7 @@ async def nightlies(ctx, minimal: bool = False):
     await update_checker.show_nightlies(ctx, minimal = minimal)
 
 @bot.command(hidden = True)
-@commands.check(allowed_channel)
+@check_admin_role()
 async def rewind_commits(ctx, num: int):
     "(For testing.) Set the bot state to n commits before HEAD."
     print("!rewind_commits", num)
@@ -718,7 +732,7 @@ async def rewind_commits(ctx, num: int):
     await ctx.send(f"Rewound {num} git commits.")
 
 @bot.command(hidden = True)
-@commands.check(allowed_channel)
+@check_admin_role()
 async def rewind_gamelists(ctx, minutes: int):
     "(For testing.) Set the gamelist state to n minutes before present."
     print("!rewind_gamelists", minutes)
@@ -759,6 +773,9 @@ async def on_command_error(ctx, error):
         return
     if isinstance(error, commands.errors.MaxConcurrencyReached):
         return  # Ignore
+    if isinstance(error, commands.errors.MissingAnyRole):
+        await ctx.send("This is an mod-only command.")
+        return
     if isinstance(error, commands.errors.CheckFailure):
         return  # Ignore, already printed a message
     if isinstance(error, (commands.errors.MissingRequiredArgument, commands.errors.BadArgument)):
