@@ -603,7 +603,7 @@ async def message_listener(message):
 @bot.command()
 @commands.check(allowed_channel)
 async def help(ctx):
-    await ctx.send(f"""Available bot commands:
+    await ctx.send(f"""You can force an early check for new and updated games and nightly builds with the !check commands in #ohr-whatsnew. Other commands can be used anywhere.
 ```
   !checkdev / !check    {checkdev.help}
   !checkgames           {checkgames.help}
@@ -614,7 +614,9 @@ async def help(ctx):
   !whatsnew [release]   {whatsnew.help}
   !disable_embeds       {disable_embeds.help}
   !enable_embeds        {enable_embeds.help}
-```""")
+```
+itch.io games are included if they're tagged 'ohrrpgce' or in the OHRRPGCE Games collection.
+""")
 
 @bot.command()
 @commands.check(allowed_channel)
@@ -628,7 +630,7 @@ async def checkall(ctx, force: bool = True):
             | await update_checker.check_ohrdev(ctx, force)):
         await ctx.send("No changes.")
 
-@bot.command()
+@bot.command(aliases = ['check'])
 @commands.check(allowed_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
@@ -650,7 +652,6 @@ async def checkgames(ctx):
         await ctx.send("No changes.")
 
 @bot.command()
-@commands.check(allowed_channel)
 @commands.cooldown(5, COOLDOWN_SEC, commands.BucketType.user)
 async def commit(ctx, rev: str):
     "Show a specific commit: an svn revision like 'r12345' or git commit like 'd8cf256'."
@@ -679,7 +680,7 @@ async def disable_embeds(ctx):
     print("!disable_embeds")
     global auto_ss_embeds_enabled
     auto_ss_embeds_enabled = False
-    await ctx.send(f"Disabled. Add @{bot.user} to see SS embed")
+    await ctx.send(f"Auto game embeds disabled. Add @{bot.user} to a message to force posting embeds")
 
 
 # Allowed in all channels
@@ -689,10 +690,9 @@ async def enable_embeds(ctx):
     print("!disable_embeds")
     global auto_ss_embeds_enabled
     auto_ss_embeds_enabled = True
-    await ctx.send("Enabled")
+    await ctx.send("Auto game embeds enabled.")
 
 @bot.command()
-@commands.check(allowed_channel)
 async def info(ctx):
     "Display bot info and status."
     print("!info")
@@ -702,7 +702,6 @@ async def info(ctx):
     await ctx.send(msg, suppress_embeds = True)
 
 @bot.command(aliases = ['nightly', 'builds'])
-@commands.check(allowed_channel)
 @commands.max_concurrency(1)
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def nightlies(ctx, minimal: bool = False):
@@ -727,7 +726,6 @@ async def rewind_gamelists(ctx, minutes: int):
     await ctx.send(f"Rewound {minutes} minutes of updates to SS/itch.io gamelists.")
 
 @bot.command()
-@commands.check(allowed_channel)
 @commands.cooldown(2, WHATSNEW_COOLDOWN_SEC, commands.BucketType.guild)
 async def whatsnew(ctx, release: str = None):
     "Display whatsnew.txt section for a specific release, or by default for current nightlies."
