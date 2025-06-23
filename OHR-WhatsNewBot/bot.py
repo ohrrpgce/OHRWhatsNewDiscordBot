@@ -676,7 +676,7 @@ async def commit(ctx, rev: str):
         await ctx.send("Invalid svn revision or git commit SHA, should look like 'r10000' or 'd8cf256'")
         return
     except KeyError:
-        await ctx.send(f"Couldn't find {rev}, the bot hasn't seen that commit.")
+        await ctx.send(f"Couldn't find {rev}, the bot hasn't seen that SVN commit.")
         return
 
     try:
@@ -694,8 +694,8 @@ async def disable_embeds(ctx):
     print("!disable_embeds")
     global auto_ss_embeds_enabled
     auto_ss_embeds_enabled = False
-    await ctx.send(f"Auto game embeds disabled. Add @{bot.user} to a message to force posting embeds")
-
+    username = str(bot.user).split('#')[0]
+    await ctx.send(f"Auto game embeds disabled. Add @{username} to a message to force posting embeds")
 
 @bot.command()
 @commands.guild_only()

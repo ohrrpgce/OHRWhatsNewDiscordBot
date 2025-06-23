@@ -112,7 +112,7 @@ class GitHubRepo:
         """Convert svn revisions to git shas if it's a recent, recognised revision.
         Throws KeyError if couldn't look it up, ValueError if invalid.
         Passes through shas."""
-        if rev.startswith('r'):
+        if re.fullmatch("r?[0-9]*", rev):
             return self.svn_revs[int(rev[1:])]
         if re.fullmatch("[0-9a-f]*", rev) and len(rev) >= 4:
             return rev
