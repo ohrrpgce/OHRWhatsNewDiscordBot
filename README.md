@@ -10,10 +10,11 @@ This bot can only be added to one guild (server) at a time.
 
 2. Fetch ohark with `git submodule init`, `git submodule update`
 
-3. Make a copy of `OHR-WhatsNewBot/example_config.json`, name it `OHR-WhatsNewBot/config.json` and add your `APP_TOKEN`, `UPDATES_CHANNEL` and `ALLOWED_CHANNELS` (where most ! commands are restricted to). Possibly customise other options (see the top of `bot.py` for docs).
+3. Create a new app at https://discord.com/developers, and on the Installation tab ensure Install Link is "Discord Provided Link", add the "bot" scope to the Guild Install, and add permissions including, presumable, Connect, Send Messages, Embed Links, Use Embedded Activities. On the Bot tab ensure 'Message Content Intent' is enabled.
 
-You can get your `APP_TOKEN` at https://developer.discord.com and the channel IDs can be obtained by
-right clicking on a channel on discord and selecting "Copy Channel ID".
+4. Make a copy of `OHR-WhatsNewBot/example_config.json`, name it `OHR-WhatsNewBot/config.json` and add your `APP_TOKEN`, `UPDATES_CHANNEL` and `ALLOWED_CHANNELS` (where most ! commands are restricted to). Possibly customise other options (see the top of `bot.py` for docs).
+
+The channel IDs can be obtained by right clicking on a channel on discord and selecting "Copy Channel ID". The APP_TOKEN is obtained by Resetting the token on the Bot tab at https://discord.com/developers
 
 # Usage 
 1. `cd OHR-WhatsNewBot`
