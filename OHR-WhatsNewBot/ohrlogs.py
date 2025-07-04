@@ -125,8 +125,13 @@ def compare_release_notes(old_filepath: str, new_filepath: str, newest_only = Fa
             tag = ' '
 
         if diff:
+            # edit_item might have been prefixed with \n above. Leave the \n before the first (tag +)
+            # line, remove others.
+            if tag in "+?":
+                edit_item = edit_item.lstrip('\n')
+
             if tag == '?':
-                edit_item = ' ' + edit_item[1:]
+                edit_item = edit_item.replace('?', ' ', 1)
 
             if tag in "-+?":
                 retval += edit_item
@@ -272,5 +277,6 @@ def get_builds(nightly_check_url, path = 'nightly-check.ini', cache = True):
 
 if __name__ == '__main__':
     # For testing
-    print(compare_urls("https://hamsterrepublic.com/ohrrpgce/whatsnew.txt",
-                       "https://raw.githubusercontent.com/ohrrpgce/ohrrpgce/wip/whatsnew.txt"))
+    print(compare_release_notes("state/whatsnew.txt", "state/whatsnew2.txt"))
+    #print(compare_urls("https://hamsterrepublic.com/ohrrpgce/whatsnew.txt",
+    #                   "https://raw.githubusercontent.com/ohrrpgce/ohrrpgce/wip/whatsnew.txt"))
