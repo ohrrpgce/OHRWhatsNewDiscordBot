@@ -87,16 +87,19 @@ class GitCommit:
 class GitHubRepo:
     "Interface with the GitHub API"
 
-    def __init__(self, user_repo):
-        "user_repo should be a username/reponame"
+    def __init__(self, user_repo, state_dir = "."):
+        """
+        user_repo should be a username/reponame
+        state_dir is the location for the svn_revs_*.json file
+        """
         self.user_repo = user_repo
         self.repo_url = "https://api.github.com/repos/" + user_repo
         self.svn_revs = {}  # Maps svn revision -> git sha for seen commits
-        self.load_svn_revs()
+        self.load_svn_revs(state_dir)
 
-    def load_svn_revs(self):
+    def load_svn_revs(self, state_dir):
         "Load .svn_revs from file"
-        self.svn_revs_file = 'svn_revs_' + self.user_repo.replace('/', '_') + '.json'
+        self.svn_revs_file = os.path.join(state_dir, 'svn_revs_' + self.user_repo.replace('/', '_') + '.json')
         if os.path.isfile(self.svn_revs_file):
             print("Loading " + self.svn_revs_file)
             with open(self.svn_revs_file, 'r') as fi:
