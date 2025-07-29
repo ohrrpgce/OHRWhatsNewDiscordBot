@@ -453,7 +453,7 @@ class UpdateChecker:
                         desc = f"[itch.io] Update to **{game.name}** by {game.author}\n{game.url}"
                         if verbose:
                             print(f"[itch.io] Update to {game.name}", game.url, "old mtime", time.ctime(oldgame.mtime), "new mtime", time.ctime(game.mtime))
-                        await self.message(desc)
+                        #await self.message(desc)
                         ret = True
 
         db = itchio.get_all_games()  # Uses caches of pages we just loaded
