@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 import traceback
+import logging
 
 import discord
 from discord.ext import commands, tasks
@@ -24,12 +25,13 @@ import ohrk.pull_itchio as itchio
 import ohrk.util
 import ohrk.gamedb as gamedb
 
-
 # Console logging verbosity level, 0, 1 or 2
 verbose = 2
 
 github.verbose = verbose >= 2
 slimesalad.verbose = verbose >= 2
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 auto_ss_embeds_enabled = True  # Post embed when an SS game is linked to
 
@@ -168,11 +170,14 @@ class UpdateChecker:
         ohrlogs.save_from_url(url, dest_path)
 
     async def message(self, msg, ctx = None, **kwargs):
-        print("message:", msg)
         if ctx:
             channel = ctx
         else:
             channel = self.channel
+        logging.info("MESSAGE in", channel)
+        if 'embed' in kwargs:
+            logging.info("(embed:)", kwargs['embed'])
+        logging.info(msg)
         await channel.send(msg, silent = True, **kwargs)
 
     async def report_commits(self, commits, ctx = None):
@@ -559,7 +564,7 @@ async def on_ready():
         update_checker.check_itchio_gamelist.start()
     # Be cute
     await bot.change_presence(activity = discord.Activity(type = discord.ActivityType.watching, name = "OHRRPGCE changes"))
-    print("Finished startup checks")
+    print("Started checkers")
 
 def chunk_message(message, chunk_size = MSG_SIZE, formatting = "{}"):
     "Split a string at line breaks into chunks at most chunk_size in length."
