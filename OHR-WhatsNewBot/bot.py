@@ -104,8 +104,7 @@ class UpdateChecker:
 
     watched_logs = ['whatsnew.txt', 'IMPORTANT-nightly.txt']
 
-    def __init__(self, bot):
-        self.channel = bot.get_channel(UPDATES_CHANNEL)
+    def __init__(self):
         self.repo = github.GitHubRepo(GITHUB_REPO)
         self.branch = GITHUB_BRANCH
 
@@ -137,6 +136,12 @@ class UpdateChecker:
 
         if verbose:
             self.print_state()
+
+    def on_ready(self, bot):
+        "Called on bot.on_ready"
+        self.updates_channel = bot.get_channel(UPDATES_CHANNEL)
+        if not self.updates_channel:
+            logging.error("invalid UPDATES_CHANNEL (not added to that guild)")
 
     def save_state(self):
         with open('state.json', 'w') as fo:
@@ -178,7 +183,7 @@ class UpdateChecker:
         if ctx:
             channel = ctx.channel
         else:
-            channel = self.channel
+            channel = self.updates_channel
         logmsg = "SEND " + describe_channel(channel)
         if 'embed' in kwargs:
             logmsg += f"\n(embed:) {kwargs['embed']}"
@@ -603,6 +608,8 @@ class BotOverrides(commands.Bot):
         await super().on_message(message)
 
 
+update_checker = UpdateChecker()
+
 # Discord setup:
 intents = discord.Intents.all()
 intents.typing = False  # Disable typing events to reduce unnecessary event handling
@@ -614,11 +621,8 @@ async def on_ready():
     print(f"Logged in as {bot.user.name}")
     print ("Started OHR WhatsNew Bot")
     print("------")
-    if not bot.get_channel(UPDATES_CHANNEL):
-        print("ERROR: invalid UPDATES_CHANNEL (not added to that guild)")
-    else:
-        global update_checker
-        update_checker = UpdateChecker(bot)
+    update_checker.on_ready(bot)
+    if update_checker.updates_channel:
         update_checker.check_ohrdev.start()
         update_checker.check_ss_gamelist.start()
         update_checker.check_itchio_gamelist.start()
@@ -641,7 +645,7 @@ def chunk_message(message, chunk_size = MSG_SIZE, formatting = "{}"):
 
 async def updates_channel(ctx):
     if ctx.channel.id != UPDATES_CHANNEL:
-        await ctx.send("This command is only allowed in #ohr-whatsnew.")
+        await ctx.send(f"This command is only allowed in {UPDATES_CHANNEL.name}.")
         return False
     return True
 
