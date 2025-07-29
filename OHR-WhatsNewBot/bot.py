@@ -184,11 +184,6 @@ class UpdateChecker:
             channel = ctx.channel
         else:
             channel = self.updates_channel
-        logmsg = "SEND " + describe_channel(channel)
-        if 'embed' in kwargs:
-            logmsg += f"\n(embed:) {kwargs['embed']}"
-        logmsg += "\n" + msg
-        logging.info(logmsg)
         await channel.send(msg, silent = True, **kwargs)
 
     async def report_commits(self, commits, ctx = None):
@@ -560,7 +555,8 @@ def describe_channel(channel) -> str:
         # Recipient seems to be blank for DMs.
         # "If this channel is received through the gateway, the recipient information may not be always available."
         users = ", ".join(str(user) for user in channel.recipients)
-        #return f"[DM {users}]"
+        if users:
+            return f"[DM {users}]"
         return "[DM]"
     else:
         if channel.guild:
@@ -572,11 +568,14 @@ def describe_channel(channel) -> str:
 def log_message(message: discord.Message):
     try:
         channelinfo = describe_channel(message.channel)
-        logline = f"RECV {channelinfo} {message.author}: {message.content}"
+        direction = "SEND" if message.author == bot.user else "RECV"
+        logline = f"{direction} {channelinfo} {message.author}: {message.content}"
+        for embed in message.embeds:
+            logline += f"\n embed: {embed.title} url={embed.url} hasimg={embed.image is not None} desc={embed.description}"
         logging.info(logline)
     except:
         logging.error('[FAILED TO LOG MESSAGE]')
-
+        raise
 
 class BotOverrides(commands.Bot):
     """Override on_message instead of using @bot.listen('on_message') as that calls the listener
@@ -586,23 +585,24 @@ class BotOverrides(commands.Bot):
         "Called for each message for logging, and watches for links to SS games to post an embed."
         #if message.author.bot:  # Or ignore all bots
         if message.author == bot.user:
+            # Log message sent by the bot.
+            log_message(message)
             return
         # Log messages that mention the bot, are DMs or commands
         if bot.user.mentioned_in(message) or message.guild == None or message.content.startswith("!"):
             log_message(message)
+        if auto_ss_embeds_enabled or bot.user.mentioned_in(message):
+            if not message.embeds:
+                match = re.search('(https?://)?www.slimesalad.com/forum/view(topic|game).php\?([pt])=([0-9]+)', message.content)
+                if match:
+                    embed = ss_game_embed(match.group(0), show_update_date = True)
+                    if embed:
+                        await message.channel.send("", embed = embed)
+                        return
+
         if message.guild == None and not message.content.startswith("!"):
             await message.channel.send("Try !help")
             return
-        if auto_ss_embeds_enabled or bot.user.mentioned_in(message):
-            if message.embeds:
-                return
-            match = re.search('(https?://)?www.slimesalad.com/forum/view(topic|game).php\?([pt])=([0-9]+)', message.content)
-            if match:
-                if verbose:
-                    print(f"Generating SS embed for message by {message.author} in {message.channel}: {message.content}")
-                embed = ss_game_embed(match.group(0), show_update_date = True)
-                if embed:
-                    await message.channel.send("", embed = embed)
 
         # equivalent to await self.process_commands(message)
         await super().on_message(message)
@@ -688,7 +688,6 @@ Allowed by all:
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkall(ctx, force: bool = True):
     "Same as !checkdev plus !checkgames"
-    print("!checkall force=", force)
     if not (await update_checker.check_ss_gamelist(ctx)
             | await update_checker.check_itchio_gamelist(ctx)
             | await update_checker.check_ohrdev(ctx, force)):
@@ -700,7 +699,6 @@ async def checkall(ctx, force: bool = True):
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkdev(ctx, force: bool = True):
     "Check for new git/svn commits and changes to whatsnew.txt & IMPORTANT-nightly.txt."
-    print("!checkdev force=", force)
     if not await update_checker.check_ohrdev(ctx, force):
         await ctx.send("No changes.")
 
@@ -770,14 +768,12 @@ async def info(ctx):
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def nightlies(ctx, minimal: bool = False):
     "Display status of and links to nightly builds."
-    print("!nightlies")
     await update_checker.show_nightlies(ctx, minimal = minimal)
 
 @bot.command(hidden = True)
 @check_admin_role()
 async def rewind_commits(ctx, num: int):
     "(For testing.) Set the bot state to n commits before HEAD."
-    print("!rewind_commits", num)
     update_checker.rewind_commits(num)
     await ctx.send(f"Rewound {num} git commits.")
 
@@ -785,7 +781,6 @@ async def rewind_commits(ctx, num: int):
 @check_admin_role()
 async def rewind_gamelists(ctx, minutes: int):
     "(For testing.) Set the gamelist state to n minutes before present."
-    print("!rewind_gamelists", minutes)
     update_checker.rewind_gamelist_mtimes(time.time() - minutes * 60)
     await ctx.send(f"Rewound {minutes} minutes of updates to SS/itch.io gamelists.")
 
@@ -793,7 +788,6 @@ async def rewind_gamelists(ctx, minutes: int):
 @commands.cooldown(2, WHATSNEW_COOLDOWN_SEC, commands.BucketType.guild)
 async def whatsnew(ctx, release: str = None):
     "Display whatsnew.txt section for a specific release, or by default for current nightlies."
-    print("!whatsnew")
 
     # Just use the most recently downloaded whatsnew.txt
     notes, error = ohrlogs.specific_release_notes('whatsnew.txt', release)
