@@ -47,7 +47,7 @@ RELEASE_WHATSNEW_URL = CONFIG["RELEASE_WHATSNEW_URL"]
 NIGHTLY_CHECK_URL = CONFIG["NIGHTLY_CHECK_URL"]
 # username/reponame, e.g. ohrrpgce/ohrrpgce
 GITHUB_REPO = CONFIG["GITHUB_REPO"]
-# git branch to watch
+# git branch to watch (FIXME: watch all svn branches instead)
 GITHUB_BRANCH = CONFIG["GITHUB_BRANCH"]
 # Names (or integer IDs) of guild roles which allow using admin commands
 ADMIN_ROLES = CONFIG["ADMIN_ROLES"]
@@ -264,6 +264,7 @@ class UpdateChecker:
             print(" New HEAD", new_repo_sha)
 
         # Limited to at most 100 new commits at a time.
+        # FIXME: this looks at wip branch only, should follow all branches
         new_commits = self.repo.last_commits(self.branch, 100, since = self.last_commit)
         await self.report_commits(new_commits, ctx)
         # Update .last_commit once report_commits succeeds. If log file messages fail to send
@@ -673,24 +674,29 @@ async def checkgames(ctx):
 @bot.command()
 @commands.cooldown(5, COOLDOWN_SEC, commands.BucketType.user)
 async def commit(ctx, rev: str):
-    "Show a specific commit: an svn revision like 'r12345' or git commit like 'd8cf256'."
+    "Show a specific commit: an svn revision like 'r12345' or 'fbohr@66' or git commit like 'd8cf256'."
     print("!commit " + rev)
     try:
-        ref = update_checker.repo.decode_rev(rev)
+        refs = update_checker.repo.decode_rev(rev)
     except ValueError:
-        await ctx.send("Invalid svn revision or git commit SHA, should look like 'r10000' or 'd8cf256'")
+        await ctx.send("Invalid svn revision or git commit SHA, should look like 'r10000' or 'd8cf256' or 'fbohr@66'")
         return
     except KeyError:
         await ctx.send(f"Couldn't find {rev}, the bot hasn't seen that SVN commit.")
         return
 
-    try:
-        commit = update_checker.repo.last_commits(ref, 1)[0]
-    except github.GitHubError as err:
-        await ctx.send(str(err))
-    else:
-        msg = trim_str(commit.format(), MSG_SIZE)
-        await ctx.send(msg, suppress_embeds = True)
+    if len(refs) > 1:
+        await ctx.send(f"That SVN commit touched multiple branches:")
+
+    for ref in refs:
+        try:
+            commit = update_checker.repo.last_commits(ref, 1)[0]
+        except github.GitHubError as err:
+            await ctx.send(str(err))
+            break
+        else:
+            msg = trim_str(commit.format(), MSG_SIZE)
+            await ctx.send(msg, suppress_embeds = True)
 
 @bot.command()
 @commands.guild_only()

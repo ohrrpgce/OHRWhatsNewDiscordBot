@@ -22,23 +22,34 @@ def program_output(*args, **kwargs):
 
 
 def import_revs():
-    
-    ghrepo = github.GitHubRepo("ohrrpgce/ohrrpgce", "state")
-    print(ghrepo.svn_revs)
+    repo_lines = {}  # For debug messages only
 
-    for line in program_output('git -C ' + ohr_git + ' log svn/wip', shell = True).split('\n'):
+    ghrepo = github.GitHubRepo("ohrrpgce/ohrrpgce", "state")
+    #print(ghrepo.svn_revs)
+
+    # Include all branches (all releases) except for old-linear, which has dups
+    # for r1-r425 and fbohr which also has dups of the grafted-in fbohr repo
+    gitout = program_output('git -C ' + ohr_git + ' log --exclude=svn/old-linear --exclude=svn/fbohr --remotes=svn', shell = True)
+    for line in gitout.split('\n'):
         if line.startswith('commit '):
             gitrev = line.replace('commit ', '')
-        if 'git-svn-id' in line and 'fbohr' not in line:
-            # Have to ignore lines from the merged fbohr repo such as
-            # git-svn-id: svn://gilgamesh.hamsterrepublic.com/fbohr/editor@29 a1daf2fc-2201-0410-9b0b-a943190fd082
-            svnrev = int(re.search('@([0-9]+)', line).group(1))
+        if 'git-svn-id' in line:
+            repo_lines[gitrev] = line
+            svnrev = re.search('@([0-9]+)', line).group(1)
+            if 'fbohr' in line:
+                svnrev = 'fbohr@' + str(svnrev)
             #print(gitrev, svnrev, line)
             if svnrev in ghrepo.svn_revs:
-                #print(f"'{ghrepo.svn_revs[svnrev]}', {svnrev}, '{gitrev}'")
-                assert ghrepo.svn_revs[svnrev] == gitrev
+                # SVN commits which touch multiple branches become separate git commits
+                # on each branch. Keep only the wip one.
+                # wip branch has precedence
+                if gitrev not in ghrepo.svn_revs[svnrev]:
+                    ghrepo.svn_revs[svnrev].append(gitrev)
+                    print("Dups for", svnrev)
+                    for revv in ghrepo.svn_revs[svnrev]:
+                        print(repo_lines[revv])
             else:
-                ghrepo.svn_revs[svnrev] = gitrev
+                ghrepo.svn_revs[svnrev] = [gitrev]
     ghrepo.save_svn_revs()
 
 import_revs()

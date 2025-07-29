@@ -4,6 +4,7 @@ import posixpath
 import re
 import requests
 import time
+from typing import Optional
 
 verbose = True
 HEADLINE_LENGTH = 120
@@ -30,13 +31,13 @@ class GitHubError(Exception):
 class GitCommit:
     "A summary of info from a git commit returned from the GitHub API as a JSON object"
 
-    sha = None
-    svn_rev = 0
-    author = None
-    url = None
-    message = None   # Excluding the git-svn line
-    headline = None  # First line of the message, trimmed
-    date = None      # Committer time, in seconds
+    sha: Optional[str] = None
+    svn_rev: Optional[int] = None
+    author: Optional[str] = None
+    url: Optional[str] = None
+    message: Optional[str] = None   # Excluding the git-svn line
+    headline: Optional[str] = None  # First line of the message, trimmed
+    date: Optional[float] = None    # Committer time, in seconds
 
     def __init__(self, commit: dict, _load_from_dict: dict = None):
         "Parses one item from a JSON list of commits from GitHub"
@@ -94,7 +95,7 @@ class GitHubRepo:
         """
         self.user_repo = user_repo
         self.repo_url = "https://api.github.com/repos/" + user_repo
-        self.svn_revs = {}  # Maps svn revision -> git sha for seen commits
+        self.svn_revs = {}  # Maps svn revision (as str) -> git sha for seen commits
         self.load_svn_revs(state_dir)
 
     def load_svn_revs(self, state_dir):
@@ -103,22 +104,38 @@ class GitHubRepo:
         if os.path.isfile(self.svn_revs_file):
             print("Loading " + self.svn_revs_file)
             with open(self.svn_revs_file, 'r') as fi:
-                # json keys can't be ints, they are converted to strings, so convert back
-                self.svn_revs = dict((int(k),v) for k,v in json.load(fi).items())
+                self.svn_revs = {}
+                for k,v in json.load(fi).items():
+                    if isinstance(v, str):  # Convert from old format which had a single git commit
+                        v = [v]
+                    self.svn_revs[k] = v
 
     def save_svn_revs(self):
         "Save .svn_revs to file"
         with open(self.svn_revs_file, 'w') as fo:
             fo.write(json.dumps(self.svn_revs, sort_keys = True, indent = 1))
 
-    def decode_rev(self, rev):
-        """Convert svn revisions to git shas if it's a recent, recognised revision.
+    def decode_rev(self, rev) -> list:
+        """Convert svn revisions to git shas if it's a recognised svn revision in one of the forms:
+          r1234
+          1234
+          fbohr@12
+        The result is almost always a length 1 list except for those few SVN commits that
+        touched multiple branches. Never returns a length 0 list.
         Throws KeyError if couldn't look it up, ValueError if invalid.
         Passes through shas."""
-        if re.fullmatch("r?[0-9]*", rev):
-            return self.svn_revs[int(rev[1:])]
+        rev = str(rev)
+        try:
+            return self.svn_revs[rev]
+        except:
+            pass
+        if rev.startswith('r'):
+            try:
+                return self.svn_revs[rev[1:]]
+            except:
+                pass
         if re.fullmatch("[0-9a-f]*", rev) and len(rev) >= 4:
-            return rev
+            return [rev]
         raise ValueError(rev)
 
     def check_rate_limit(self):
@@ -158,7 +175,8 @@ class GitHubRepo:
         elif resp.status_code == 404:
             raise GitHubError(resp.json()['message'])
         else:
-            raise GitHubError("Unknown status code in reply %s\n%s" % (resp, resp.json()))
+            logging.error("Bad status code in reply %s\n%s" % (resp, resp.json()))
+            raise GitHubError("Bad status code in reply %s" % (resp,))
 
     def current_sha(self, ref):
         "Get sha of last commit to a branch or tag (to disambiguate, use 'heads/BRANCH' or 'tags/TAG')"
@@ -173,7 +191,8 @@ class GitHubRepo:
 
     def last_commits(self, ref, num = 40, touching_path = None, since: GitCommit = None):
         """"Get list of last `num` GitCommits to a branch/tag, optionally touching a file.
-        num is limited to 100."""
+        num is limited to 100.
+        Caches seen SVN revs while at it."""
         # Not equivalent to get('/commits/ + ref)
         since_date = None
         if since:
@@ -182,15 +201,20 @@ class GitHubRepo:
         resp = self.get_json('/commits', {'sha': ref, 'path': touching_path, 'since': since_date, 'per_page': num})
         ret = []
         #print(f"/commits {ref} since {since_date} returned {len(resp)}")
+        new_svn_rev = False
         for jsoncommit in resp:
             commit = GitCommit(jsoncommit)
             if commit.svn_rev:
-                self.svn_revs[commit.svn_rev] = commit.sha
+                revs = self.svn_revs.setdefault(str(commit.svn_rev), [])
+                if commit.sha not in revs:
+                    revs.append(commit.sha)
+                    new_svn_rev = True
             if since and commit.sha == since.sha:
                 break
             ret.append(commit)
         #print(f" kept {len(ret)} commits")
-        self.save_svn_revs()
+        if new_svn_rev:
+            self.save_svn_revs()
         return ret
 
 
