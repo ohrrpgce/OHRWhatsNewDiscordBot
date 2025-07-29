@@ -31,7 +31,12 @@ verbose = 2
 github.verbose = verbose >= 2
 slimesalad.verbose = verbose >= 2
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(
+    stream = sys.stdout,
+    level = logging.INFO,
+    format = '%(asctime)s %(levelname)s %(message)s',
+    datefmt = '%Y-%m-%d %H:%M:%S'
+)
 
 auto_ss_embeds_enabled = True  # Post embed when an SS game is linked to
 
@@ -171,13 +176,14 @@ class UpdateChecker:
 
     async def message(self, msg, ctx = None, **kwargs):
         if ctx:
-            channel = ctx
+            channel = ctx.channel
         else:
             channel = self.channel
-        logging.info("MESSAGE in", channel)
+        logmsg = "SEND " + describe_channel(channel)
         if 'embed' in kwargs:
-            logging.info("(embed:)", kwargs['embed'])
-        logging.info(msg)
+            logmsg += f"\n(embed:) {kwargs['embed']}"
+        logmsg += "\n" + msg
+        logging.info(logmsg)
         await channel.send(msg, silent = True, **kwargs)
 
     async def report_commits(self, commits, ctx = None):
@@ -544,11 +550,64 @@ def ss_game_embed(url, cache = SS_CACHE_SEC, show_update_date = False, show_dl_d
 
     return embed
 
+def describe_channel(channel) -> str:
+    if isinstance(channel, discord.DMChannel):
+        # Recipient seems to be blank for DMs.
+        # "If this channel is received through the gateway, the recipient information may not be always available."
+        users = ", ".join(str(user) for user in channel.recipients)
+        #return f"[DM {users}]"
+        return "[DM]"
+    else:
+        if channel.guild:
+            guild = channel.guild.name + "/"
+        else:
+            guild = ""
+        return f"[{guild}{channel.name}]"
+
+def log_message(message: discord.Message):
+    try:
+        channelinfo = describe_channel(message.channel)
+        logline = f"RECV {channelinfo} {message.author}: {message.content}"
+        logging.info(logline)
+    except:
+        logging.error('[FAILED TO LOG MESSAGE]')
+
+
+class BotOverrides(commands.Bot):
+    """Override on_message instead of using @bot.listen('on_message') as that calls the listener
+    after Bot processes the command, which is confusing for logging."""
+
+    async def on_message(self, message: discord.Message, /) -> None:
+        "Called for each message for logging, and watches for links to SS games to post an embed."
+        #if message.author.bot:  # Or ignore all bots
+        if message.author == bot.user:
+            return
+        # Log messages that mention the bot, are DMs or commands
+        if bot.user.mentioned_in(message) or message.guild == None or message.content.startswith("!"):
+            log_message(message)
+        if message.guild == None and not message.content.startswith("!"):
+            await message.channel.send("Try !help")
+            return
+        if auto_ss_embeds_enabled or bot.user.mentioned_in(message):
+            if message.embeds:
+                return
+            match = re.search('(https?://)?www.slimesalad.com/forum/view(topic|game).php\?([pt])=([0-9]+)', message.content)
+            if match:
+                if verbose:
+                    print(f"Generating SS embed for message by {message.author} in {message.channel}: {message.content}")
+                embed = ss_game_embed(match.group(0), show_update_date = True)
+                if embed:
+                    await message.channel.send("", embed = embed)
+
+        # equivalent to await self.process_commands(message)
+        await super().on_message(message)
+
 
 # Discord setup:
 intents = discord.Intents.all()
 intents.typing = False  # Disable typing events to reduce unnecessary event handling
-bot = commands.Bot(command_prefix = "!", intents = intents, help_command = None)
+bot = BotOverrides(command_prefix = "!", intents = intents, help_command = None)
+
 
 @bot.event
 async def on_ready():
@@ -589,25 +648,6 @@ async def updates_channel(ctx):
 def check_admin_role():
     # Throws commands.MissingAnyRole
     return commands.has_any_role(*ADMIN_ROLES)
-
-@bot.listen('on_message')
-#@commands.cooldown(1, 10, commands.BucketType.user)
-async def message_listener(message):
-    "Called for each message, watches for links to SS games, and posts an embed."
-    if message.author == bot.user:
-        return
-    #print("mentioned", bot.user.mentioned_in(message))
-    if auto_ss_embeds_enabled or bot.user.mentioned_in(message):
-        if message.embeds:
-            return
-        match = re.search('(https?://)?www.slimesalad.com/forum/view(topic|game).php\?([pt])=([0-9]+)', message.content)
-        if match:
-            if verbose:
-                print(f"Generating SS embed for message by {message.author} in {message.channel}: {message.content}")
-            embed = ss_game_embed(match.group(0), show_update_date = True)
-            if embed:
-                await message.channel.send("", embed = embed)
-
 
 @bot.command()
 async def help(ctx):
@@ -666,7 +706,6 @@ async def checkdev(ctx, force: bool = True):
 @commands.cooldown(1, COOLDOWN_SEC, commands.BucketType.guild)
 async def checkgames(ctx):
     "Check for new and updated OHRRPGCE games on itch.io and Slime Salad (be patient)"
-    print("!checkgames")
     if not (await update_checker.check_ss_gamelist(ctx)
             | await update_checker.check_itchio_gamelist(ctx)):
         await ctx.send("No changes.")
@@ -675,7 +714,6 @@ async def checkgames(ctx):
 @commands.cooldown(5, COOLDOWN_SEC, commands.BucketType.user)
 async def commit(ctx, rev: str):
     "Show a specific commit: an svn revision like 'r12345' or 'fbohr@66' or git commit like 'd8cf256'."
-    print("!commit " + rev)
     try:
         refs = update_checker.repo.decode_rev(rev)
     except ValueError:
@@ -702,7 +740,6 @@ async def commit(ctx, rev: str):
 @commands.guild_only()
 async def disable_embeds(ctx):
     "Stop the bot from showing embeds for links to SS games, unless it's also @mentioned."
-    print("!disable_embeds")
     global auto_ss_embeds_enabled
     auto_ss_embeds_enabled = False
     username = str(bot.user).split('#')[0]
@@ -712,7 +749,6 @@ async def disable_embeds(ctx):
 @commands.guild_only()
 async def enable_embeds(ctx):
     "Automatically show an embed whenever an SS game link is posted."
-    print("!disable_embeds")
     global auto_ss_embeds_enabled
     auto_ss_embeds_enabled = True
     await ctx.send("Auto game embeds enabled.")
@@ -720,7 +756,6 @@ async def enable_embeds(ctx):
 @bot.command()
 async def info(ctx):
     "Display bot info and status."
-    print("!info")
     msg = BOT_INFO + "\n"
     msg += f"Watching https://github.com/{GITHUB_REPO}/commits/{GITHUB_BRANCH}\n"
     msg += "Current status:\n```" + update_checker.state_info() + "```\nUse `!help` for help."
