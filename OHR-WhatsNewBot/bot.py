@@ -62,6 +62,8 @@ UPDATES_CHANNEL = CONFIG["UPDATES_CHANNEL"]
 MINUTES_PER_CHECK = CONFIG["MINUTES_PER_CHECK"]
 # If it's been this long without new nightlies then force a check for git commits and log changes
 MAX_CHECK_DELAY_HOURS = CONFIG["MAX_CHECK_DELAY_HOURS"]
+# Whether to report new/updated itch.io games
+ITCHIO_CHECK_ENABLED = CONFIG["ITCHIO_CHECK_ENABLED"]
 # How often to check for new/updated itch.io games
 ITCHIO_CHECK_HOURS = CONFIG["ITCHIO_CHECK_HOURS"]
 # How often to check for new/updated SS games
@@ -432,7 +434,9 @@ class UpdateChecker:
 
     @tasks.loop(hours = ITCHIO_CHECK_HOURS)
     async def check_itchio_gamelist(self, ctx = None) -> bool:
-        "Fetch SS gamedump and announce new & changed games. Returns true if posted anything."
+        "Fetch itch.io gamelists and announce new & changed games. Returns true if posted anything."
+        if not ITCHIO_CHECK_ENABLED:
+            return False
         if verbose:
             print(f"** UpdateChecker.check_itchio_gamelist() ", time.asctime())
         ret = False
@@ -625,7 +629,8 @@ async def on_ready():
     if update_checker.updates_channel:
         update_checker.check_ohrdev.start()
         update_checker.check_ss_gamelist.start()
-        update_checker.check_itchio_gamelist.start()
+        if ITCHIO_CHECK_ENABLED:
+            update_checker.check_itchio_gamelist.start()
     # Be cute
     await bot.change_presence(activity = discord.Activity(type = discord.ActivityType.watching, name = "OHRRPGCE changes"))
     print("Started checkers")
